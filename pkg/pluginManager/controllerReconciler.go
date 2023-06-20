@@ -5,14 +5,17 @@ package pluginManager
 
 import (
 	"context"
-	"github.com/kdoctor-io/kdoctor/pkg/fileManager"
-	crd "github.com/kdoctor-io/kdoctor/pkg/k8s/apis/kdoctor.io/v1beta1"
-	plugintypes "github.com/kdoctor-io/kdoctor/pkg/pluginManager/types"
-	"go.uber.org/zap"
 	"reflect"
+
+	"go.uber.org/zap"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	"github.com/kdoctor-io/kdoctor/pkg/fileManager"
+	crd "github.com/kdoctor-io/kdoctor/pkg/k8s/apis/kdoctor.io/v1beta1"
+	plugintypes "github.com/kdoctor-io/kdoctor/pkg/pluginManager/types"
+	"github.com/kdoctor-io/kdoctor/pkg/scheduler"
 )
 
 type pluginControllerReconciler struct {
@@ -22,6 +25,8 @@ type pluginControllerReconciler struct {
 	crdKind     string
 	fm          fileManager.FileManager
 	crdKindName string
+
+	tracker *scheduler.Tracker
 }
 
 // contorller reconcile
@@ -43,9 +48,32 @@ func (s *pluginControllerReconciler) Reconcile(ctx context.Context, req reconcil
 		logger := s.logger.With(zap.String(instance.Kind, instance.Name))
 		logger.Sugar().Debugf("reconcile handle %v", instance)
 
+		// since we set ownerRef for the corresponding resource, we don't need to care about the cleanup procession
 		if instance.DeletionTimestamp != nil {
 			s.logger.Sugar().Debugf("ignore deleting task %v", req)
 			return ctrl.Result{}, nil
+		}
+
+		// create resource
+		if instance.Status.Resource == nil {
+			resource, err := scheduler.CreateTaskRuntimeIfNotExist(ctx, s.client, KindNameNetReach, &instance, instance.Spec.AgentSpec, logger)
+			if nil != err {
+				s.logger.Error(err.Error())
+				return ctrl.Result{}, err
+			}
+			instance.Status.Resource = &resource
+			logger.Sugar().Infof("try to update %s/%s status with resource %v", KindNameNetReach, instance.Name, resource)
+			err = s.client.Status().Update(ctx, &instance)
+			if nil != err {
+				logger.Error(err.Error())
+				return ctrl.Result{}, err
+			}
+
+			err = s.tracker.DB.Apply(scheduler.BuildItem(resource, KindNameNetReach, instance.Name, nil))
+			if nil != err {
+				logger.Error(err.Error())
+				return ctrl.Result{}, err
+			}
 		}
 
 		oldStatus := instance.Status.DeepCopy()
@@ -55,14 +83,25 @@ func (s *pluginControllerReconciler) Reconcile(ctx context.Context, req reconcil
 			logger.Sugar().Errorf("failed to UpdateStatus, will retry it, error=%v", err)
 			return ctrl.Result{}, err
 		} else {
-			if newStatus != nil && !reflect.DeepEqual(newStatus, oldStatus) {
-				instance.Status = *newStatus
-				if err := s.client.Status().Update(ctx, &instance); err != nil {
-					// requeue
-					logger.Sugar().Errorf("failed to update status, will retry it, error=%v", err)
-					return ctrl.Result{}, err
+			if newStatus != nil {
+				if !reflect.DeepEqual(newStatus, oldStatus) {
+					instance.Status = *newStatus
+					if err := s.client.Status().Update(ctx, &instance); err != nil {
+						// requeue
+						logger.Sugar().Errorf("failed to update status, will retry it, error=%v", err)
+						return ctrl.Result{}, err
+					}
+					logger.Sugar().Debugf("succeeded update status, newStatus=%+v", newStatus)
 				}
-				logger.Sugar().Debugf("succeeded update status, newStatus=%+v", newStatus)
+
+				// update tracker database
+				if newStatus.FinishTime != nil {
+					err := s.tracker.DB.Apply(scheduler.BuildItem(*instance.Status.Resource, KindNameNetReach, instance.Name, newStatus.FinishTime))
+					if nil != err {
+						logger.Error(err.Error())
+						return ctrl.Result{}, err
+					}
+				}
 			}
 
 			if result != nil {
@@ -81,9 +120,32 @@ func (s *pluginControllerReconciler) Reconcile(ctx context.Context, req reconcil
 		logger := s.logger.With(zap.String(instance.Kind, instance.Name))
 		logger.Sugar().Debugf("reconcile handle %v", instance)
 
+		// since we set ownerRef for the corresponding resource, we don't need to care about the cleanup procession
 		if instance.DeletionTimestamp != nil {
 			s.logger.Sugar().Debugf("ignore deleting task %v", req)
 			return ctrl.Result{}, nil
+		}
+
+		// create resource
+		if instance.Status.Resource == nil {
+			resource, err := scheduler.CreateTaskRuntimeIfNotExist(ctx, s.client, KindNameAppHttpHealthy, &instance, instance.Spec.AgentSpec, logger)
+			if nil != err {
+				s.logger.Error(err.Error())
+				return ctrl.Result{}, err
+			}
+			instance.Status.Resource = &resource
+			logger.Sugar().Infof("try to update %s/%s status with resource %v", KindNameAppHttpHealthy, instance.Name, resource)
+			err = s.client.Status().Update(ctx, &instance)
+			if nil != err {
+				logger.Error(err.Error())
+				return ctrl.Result{}, err
+			}
+
+			err = s.tracker.DB.Apply(scheduler.BuildItem(resource, KindNameAppHttpHealthy, instance.Name, nil))
+			if nil != err {
+				logger.Error(err.Error())
+				return ctrl.Result{}, err
+			}
 		}
 
 		oldStatus := instance.Status.DeepCopy()
@@ -93,14 +155,25 @@ func (s *pluginControllerReconciler) Reconcile(ctx context.Context, req reconcil
 			logger.Sugar().Errorf("failed to UpdateStatus, will retry it, error=%v", err)
 			return ctrl.Result{}, err
 		} else {
-			if newStatus != nil && !reflect.DeepEqual(newStatus, oldStatus) {
-				instance.Status = *newStatus
-				if err := s.client.Status().Update(ctx, &instance); err != nil {
-					// requeue
-					logger.Sugar().Errorf("failed to update status, will retry it, error=%v", err)
-					return ctrl.Result{}, err
+			if newStatus != nil {
+				if !reflect.DeepEqual(newStatus, oldStatus) {
+					instance.Status = *newStatus
+					if err := s.client.Status().Update(ctx, &instance); err != nil {
+						// requeue
+						logger.Sugar().Errorf("failed to update status, will retry it, error=%v", err)
+						return ctrl.Result{}, err
+					}
+					logger.Sugar().Debugf("succeeded update status, newStatus=%+v", newStatus)
 				}
-				logger.Sugar().Debugf("succeeded update status, newStatus=%+v", newStatus)
+
+				// update tracker database
+				if newStatus.FinishTime != nil {
+					err := s.tracker.DB.Apply(scheduler.BuildItem(*instance.Status.Resource, KindNameAppHttpHealthy, instance.Name, newStatus.FinishTime))
+					if nil != err {
+						logger.Error(err.Error())
+						return ctrl.Result{}, err
+					}
+				}
 			}
 
 			if result != nil {
@@ -117,9 +190,34 @@ func (s *pluginControllerReconciler) Reconcile(ctx context.Context, req reconcil
 		}
 		logger := s.logger.With(zap.String(instance.Kind, instance.Name))
 		logger.Sugar().Debugf("reconcile handle %v", instance)
+
+		// since we set ownerRef for the corresponding resource, we don't need to care about the cleanup procession
 		if instance.DeletionTimestamp != nil {
 			s.logger.Sugar().Debugf("ignore deleting task %v", req)
 			return ctrl.Result{}, nil
+		}
+
+		// create resource
+		if instance.Status.Resource == nil {
+			resource, err := scheduler.CreateTaskRuntimeIfNotExist(ctx, s.client, KindNameNetdns, &instance, instance.Spec.AgentSpec, logger)
+			if nil != err {
+				s.logger.Error(err.Error())
+				return ctrl.Result{}, err
+			}
+			instance.Status.Resource = &resource
+			logger.Sugar().Infof("try to update %s/%s status with resource %v", KindNameNetdns, instance.Name, resource)
+			err = s.client.Status().Update(ctx, &instance)
+			if nil != err {
+				logger.Error(err.Error())
+				return ctrl.Result{}, err
+			}
+
+			// let the tracker trace created status
+			err = s.tracker.DB.Apply(scheduler.BuildItem(resource, KindNameNetdns, instance.Name, nil))
+			if nil != err {
+				logger.Error(err.Error())
+				return ctrl.Result{}, err
+			}
 		}
 
 		oldStatus := instance.Status.DeepCopy()
@@ -129,14 +227,25 @@ func (s *pluginControllerReconciler) Reconcile(ctx context.Context, req reconcil
 			logger.Sugar().Errorf("failed to UpdateStatus, will retry it, error=%v", err)
 			return ctrl.Result{}, err
 		} else {
-			if newStatus != nil && !reflect.DeepEqual(newStatus, oldStatus) {
-				instance.Status = *newStatus
-				if err := s.client.Status().Update(ctx, &instance); err != nil {
-					// requeue
-					logger.Sugar().Errorf("failed to update status, will retry it, error=%v", err)
-					return ctrl.Result{}, err
+			if newStatus != nil {
+				if !reflect.DeepEqual(newStatus, oldStatus) {
+					instance.Status = *newStatus
+					if err := s.client.Status().Update(ctx, &instance); err != nil {
+						// requeue
+						logger.Sugar().Errorf("failed to update status, will retry it, error=%v", err)
+						return ctrl.Result{}, err
+					}
+					logger.Sugar().Debugf("succeeded update status, newStatus=%+v", newStatus)
 				}
-				logger.Sugar().Debugf("succeeded update status, newStatus=%+v", newStatus)
+
+				// update tracker database
+				if newStatus.FinishTime != nil {
+					err := s.tracker.DB.Apply(scheduler.BuildItem(*instance.Status.Resource, KindNameNetReach, instance.Name, newStatus.FinishTime))
+					if nil != err {
+						logger.Error(err.Error())
+						return ctrl.Result{}, err
+					}
+				}
 			}
 			if result != nil {
 				return *result, nil

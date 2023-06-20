@@ -243,6 +243,8 @@ func (s *pluginControllerReconciler) UpdateStatus(logger *zap.Logger, ctx contex
 							logger.Sugar().Infof("insert new record for next round : %+v", *newRecord)
 						} else {
 							newStatus.Finish = true
+							now := metav1.Now()
+							newStatus.FinishTime = &now
 						}
 					}
 
@@ -272,6 +274,8 @@ func (s *pluginControllerReconciler) UpdateStatus(logger *zap.Logger, ctx contex
 		if *newStatus.DoneRound == *newStatus.ExpectedRound {
 			logger.Sugar().Debugf("task %s finish, ignore ", taskName)
 			newStatus.Finish = true
+			now := metav1.Now()
+			newStatus.FinishTime = &now
 			result = nil
 
 		} else {
@@ -306,6 +310,8 @@ func (s *pluginControllerReconciler) UpdateStatus(logger *zap.Logger, ctx contex
 							logger.Sugar().Infof("insert new record for next round : %+v", *newRecord)
 						} else {
 							newStatus.Finish = true
+							now := metav1.Now()
+							newStatus.FinishTime = &now
 						}
 					}
 
