@@ -6,7 +6,6 @@ package scheduler
 import (
 	"context"
 	"fmt"
-	"github.com/kdoctor-io/kdoctor/pkg/types"
 	"reflect"
 	"time"
 
@@ -17,6 +16,7 @@ import (
 
 	crd "github.com/kdoctor-io/kdoctor/pkg/k8s/apis/kdoctor.io/v1beta1"
 	scheduleruntime "github.com/kdoctor-io/kdoctor/pkg/scheduler/runtime"
+	"github.com/kdoctor-io/kdoctor/pkg/types"
 )
 
 type TrackerConfig struct {
@@ -39,10 +39,11 @@ type Tracker struct {
 
 func NewTracker(c client.Client, config TrackerConfig, log *zap.Logger) *Tracker {
 	tracker := &Tracker{
-		client:     c,
-		DB:         NewDB(MaxDBCap, log.Named("Database")),
-		itemSignal: make(chan Item, config.ItemChannelBuffer),
-		log:        log,
+		client:        c,
+		DB:            NewDB(config.MaxDatabaseCap, log.Named("Database")),
+		itemSignal:    make(chan Item, config.ItemChannelBuffer),
+		log:           log,
+		TrackerConfig: config,
 	}
 
 	return tracker

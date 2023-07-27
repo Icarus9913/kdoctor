@@ -5,14 +5,9 @@ package cmd
 
 import (
 	"context"
-	"os"
-
 	"go.opentelemetry.io/otel/attribute"
-	genericapiserver "k8s.io/apiserver/pkg/server"
-	"k8s.io/klog/v2"
 	"path/filepath"
 
-	"github.com/kdoctor-io/kdoctor/pkg/apiserver"
 	"github.com/kdoctor-io/kdoctor/pkg/debug"
 	"github.com/kdoctor-io/kdoctor/pkg/pluginManager"
 	"github.com/kdoctor-io/kdoctor/pkg/types"
@@ -66,23 +61,23 @@ func DaemonMain() {
 	rootLogger.Info("finish kdoctor-controller initialization")
 
 	// start apiserver
-	stopCh := genericapiserver.SetupSignalHandler()
-	apiserverConfig, err := apiserver.NewkdoctorServerOptions().Config()
-	if nil != err {
-		rootLogger.Sugar().Fatal("Error creating server configuration: %v", err)
-	}
-	server, err := apiserverConfig.Complete().New()
-	if nil != err {
-		rootLogger.Sugar().Fatal("Error creating server: %v", err)
-	}
+	/*	stopCh := genericapiserver.SetupSignalHandler()
+		apiserverConfig, err := apiserver.NewkdoctorServerOptions().Config()
+		if nil != err {
+			rootLogger.Sugar().Fatal("Error creating server configuration: %v", err)
+		}
+		server, err := apiserverConfig.Complete().New()
+		if nil != err {
+			rootLogger.Sugar().Fatal("Error creating server: %v", err)
+		}
 
-	rootLogger.Info("running kdoctor-apiserver")
-	err = server.Run(stopCh)
-	if nil != err {
-		klog.Errorf("Error creating server: %v", err)
-		os.Exit(1)
-	}
+		rootLogger.Info("running kdoctor-apiserver")
+		err = server.Run(stopCh)
+		if nil != err {
+			klog.Errorf("Error creating server: %v", err)
+			os.Exit(1)
+		}*/
 
 	// sleep forever
-	// select {}
+	select {}
 }

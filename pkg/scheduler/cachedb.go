@@ -23,6 +23,10 @@ type DB interface {
 }
 
 func NewDB(maxCap int, log *zap.Logger) DB {
+	if maxCap <= 0 {
+		maxCap = MaxDBCap
+	}
+
 	return &Database{
 		cache:  make(map[RuntimeKey]Item),
 		maxCap: maxCap,
